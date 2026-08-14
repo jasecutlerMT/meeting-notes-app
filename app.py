@@ -1097,15 +1097,23 @@ def _write_desktop_restore():
     It lives on the Desktop rather than inside the app folder because someone whose app
     just stopped working needs to find it without going hunting — and it must work with
     the app not running, which is exactly when it's needed."""
+    body = RESTORE_SCRIPT.replace("__APP_DIR__", str(HERE)).replace("__REPO__", UPDATE_REPO)
+    desktop = Path.home() / "Desktop"
     try:
-        target = Path.home() / "Desktop" / "Restore Previous Version.command"
-        target.write_text(
-            RESTORE_SCRIPT.replace("__APP_DIR__", str(HERE)).replace("__REPO__", UPDATE_REPO),
-            encoding="utf-8")
-        target.chmod(0o755)
-        return target
+        desktop.mkdir(parents=True, exist_ok=True)
     except Exception:
-        return None
+        pass
+    # The Desktop is where someone will look first; the app folder is the fallback, so
+    # the way back always exists somewhere even on an unusual setup.
+    for target in (desktop / "Restore Previous Version.command",
+                   HERE / "Restore Previous Version.command"):
+        try:
+            target.write_text(body, encoding="utf-8")
+            target.chmod(0o755)
+            return target
+        except Exception:
+            continue
+    return None
 
 
 def _defer_exit(signum, frame):
@@ -1167,6 +1175,12 @@ fi
 def _schedule_relaunch():
     """Start the updated app once this one has exited."""
     try:
+        # The page that asked for the update reloads itself, so the restarted app must
+        # not also open a second tab — two identical windows look like something broke.
+        (UPD / "RELAUNCHED").write_text("1", encoding="utf-8")
+    except Exception:
+        pass
+    try:
         helper = Path(tempfile.gettempdir()) / "meeting_notes_relaunch.sh"
         helper.write_text(RELAUNCH_SCRIPT.replace("__PORT__", str(PORT)), encoding="utf-8")
         helper.chmod(0o755)
@@ -1206,6 +1220,39 @@ def _clear_pending_verify():
         pass
 
 
+def take_just_updated():
+    """The 'you were just updated' note, if there is one. Read once, then cleared.
+
+    Delivered from the server rather than the browser so that whichever tab the user
+    ends up looking at shows the confirmation."""
+    p = UPD / "JUST_UPDATED"
+    if not p.exists():
+        return None
+    try:
+        d = json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        d = None
+    try:
+        p.unlink()
+    except Exception:
+        pass
+    if not d or not d.get("version"):
+        return None
+    return {"version": str(d["version"]), "notes": [str(n) for n in (d.get("notes") or [])][:8]}
+
+
+def _verify_after_uptime(seconds: int = 120):
+    """Safety net: count a version as working once it has simply run for a while.
+
+    Normally the page loads and clears this within a second. But if the browser didn't
+    open — say it wasn't running — a perfectly good version would otherwise look like a
+    failed start, and after a few launches get rolled back for no reason."""
+    def _later():
+        time.sleep(seconds)
+        _clear_pending_verify()
+    threading.Thread(target=_later, daemon=True).start()
+
+
 def perform_update():
     """Download, check and install the newest version.
 
@@ -1215,7 +1262,7 @@ def perform_update():
     swapped = False
     try:
         if not os.access(HERE, os.W_OK):
-            return False, ("this Mac won't let the app update itself where it is. Try moving "
+            return False, ("This Mac won't let the app update itself where it is. Try moving "
                            "the Meeting Notes folder out of Downloads. Nothing was changed."), None, False
         shutil.rmtree(STAGED, ignore_errors=True)
         UPD.mkdir(parents=True, exist_ok=True)
@@ -1229,23 +1276,36 @@ def perform_update():
         _write_desktop_restore()   # the way back exists BEFORE we take any risk
         swapped = True
         _swap_in(root, _swap_order(root))
+        # Leave a note for the restarted app to show: "Updated to 1.0.1 ✓", with what
+        # changed. Without this the update finishes and leaves no trace at all, which
+        # looks exactly like nothing happened.
+        try:
+            fresh = json.loads((HERE / "version.json").read_text(encoding="utf-8"))
+            (UPD / "JUST_UPDATED").write_text(json.dumps({
+                "version": str(fresh.get("version") or new_version),
+                "notes": [str(n) for n in (fresh.get("notes") or [])][:8],
+            }), encoding="utf-8")
+        except Exception:
+            pass
         (UPD / "PENDING_VERIFY").write_text("0", encoding="utf-8")
         (UPD / "IN_PROGRESS").unlink(missing_ok=True)
         shutil.rmtree(STAGED, ignore_errors=True)
         _prune_backups()
         return True, f"Updated to version {new_version}.", new_version, True
     except urllib.error.URLError as e:
-        return False, (f"couldn't reach the update site ({str(getattr(e, 'reason', e))[:80]}) — "
-                       "check your internet connection. Nothing was changed."), None, False
+        return False, ("Couldn't reach the update site — this usually just means you're not "
+                       "online. Nothing was changed."), None, False
     except Exception as e:
         msg = str(e)
         if swapped:
             # Be honest: files were already being replaced.
-            return False, ("the update was interrupted. Quit the app and start it again — "
-                           "it will put your previous version back by itself."), None, True
+            return False, ("The update was interrupted. Close this window and open Meeting Notes "
+                           "again from your Desktop icon — it will put your previous version "
+                           "back by itself."), None, True
         shutil.rmtree(STAGED, ignore_errors=True)
-        return False, (msg if "nothing was changed" in msg.lower()
-                       else f"{msg} — nothing was changed."), None, False
+        if "nothing was changed" not in msg.lower():
+            msg = f"{msg} — nothing was changed."
+        return False, (msg[:1].upper() + msg[1:] if msg else msg), None, False
 
 
 # ----- routes -----------------------------------------------------------------
@@ -1435,6 +1495,7 @@ def api_status():
     s["session_name"] = Path(s["session"]).name if s["session"] else None
     s["notion_configured"] = notion_configured()
     s["version"] = APP_VERSION
+    s["just_updated"] = take_just_updated()
     s["cost"] = read_cost(Path(s["session"])) if s["session"] else None
     s["billed"] = read_billing(Path(s["session"])) if s["session"] else None
     s["coverage"] = read_coverage(Path(s["session"])) if s["session"] else None
@@ -1705,13 +1766,13 @@ def api_update_check():
     except urllib.error.HTTPError as e:
         if e.code == 404:
             return jsonify({"ok": False, "current": APP_VERSION, "not_published": True,
-                            "error": "the update site isn't set up yet"})
-        return jsonify({"ok": False, "current": APP_VERSION,
-                        "error": f"couldn't check for updates (error {e.code})"})
+                            "reason": "the update site isn't published yet"})
+        return jsonify({"ok": False, "current": APP_VERSION, "reason": f"error {e.code}"})
     except Exception as e:
-        reason = str(getattr(e, "reason", e))[:120]
+        # Just the bare reason — the page writes the sentence, so it never reads like
+        # two half-messages stuck together.
         return jsonify({"ok": False, "current": APP_VERSION,
-                        "error": f"couldn't check for updates ({reason})"})
+                        "reason": str(getattr(e, "reason", e))[:120]})
     return jsonify({
         "ok": True,
         "current": APP_VERSION,
@@ -1808,7 +1869,18 @@ if __name__ == "__main__":
             print("  Meeting Notes is already running — opening it.")
             open_app_page()
             sys.exit(0)
-    threading.Thread(target=_open_browser, daemon=True).start()
+    # After an update the existing page reloads itself onto the new version, so don't
+    # open a second tab on top of it.
+    _relaunched = UPD / "RELAUNCHED"
+    if _relaunched.exists():
+        try:
+            _relaunched.unlink()
+        except Exception:
+            pass
+        print("  Updated — your existing Meeting Notes tab will refresh itself.")
+    else:
+        threading.Thread(target=_open_browser, daemon=True).start()
+    _verify_after_uptime()   # don't roll back a version that's actually running fine
     try:
         app.run(host="127.0.0.1", port=PORT, threaded=True)
     except OSError:

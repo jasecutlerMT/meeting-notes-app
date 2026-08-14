@@ -214,14 +214,52 @@
   .resume-actions { display: flex; gap: 8px; margin-top: 10px; }
   .resume-actions .action { padding: 7px 13px; font-size: 13px; }
 
-  .topbar { position: fixed; top: 16px; right: 20px; z-index: 10; display: flex; gap: 9px; }
+  .topbar { position: fixed; top: 16px; right: 20px; z-index: 10; display: flex; gap: 9px;
+    align-items: center; }
   .topbar .action { font-size: 13.5px; padding: 10px 18px; border-radius: 11px;
     box-shadow: 0 6px 18px -9px rgba(30,27,75,0.35); }
+  /* The version, always visible up here — you shouldn't have to scroll to know it. */
+  #topVersion { font-size: 12px; font-weight: 600; color: var(--muted);
+    background: #fff; border: 1px solid var(--line); border-radius: 999px;
+    padding: 6px 11px; box-shadow: 0 6px 18px -9px rgba(30,27,75,0.35); white-space: nowrap; }
+  #topVersion.new { background: var(--indigo); color: #fff; border-color: var(--indigo); }
   #quitBtn:hover { background: #fef2f2; border-color: #fecaca; color: #b91c1c; }
+  /* On a narrower window the fixed buttons would sit on top of the title — give the
+     page enough headroom that they never collide. */
+  @media (max-width: 1180px) {
+    .wrap { padding-top: 56px; }
+  }
   /* Turns solid indigo when a new version is waiting, so it's easy to notice. */
   #updateBtn.ready { background: var(--indigo); color: #fff; border-color: var(--indigo); }
   #updateBtn.ready:hover { background: var(--indigo-deep); }
   #updateBtn:disabled { opacity: .65; cursor: default; }
+
+  /* Update messages live in the page, not in browser pop-ups: a pop-up can be silenced
+     by the browser, and it disappears the moment it's dismissed. */
+  .update-panel { border-radius: 13px; padding: 14px 16px; margin-bottom: 16px;
+    font-size: 14px; line-height: 1.55; text-align: left; border: 1px solid; }
+  .update-panel.done  { background: #ecfdf5; border-color: #a7f3d0; color: #065f46; }
+  .update-panel.offer { background: #eef2ff; border-color: #c7d2fe; color: var(--indigo-deep); }
+  .update-panel.ok    { background: #f8fafc; border-color: var(--line); color: var(--ink); }
+  .update-panel.warn  { background: #fffbeb; border-color: #fde68a; color: #92400e; }
+  .panel-notes { margin: 8px 0 0; padding-left: 20px; }
+  .panel-notes li { margin: 3px 0; }
+  .panel-detail { margin-top: 8px; font-size: 13px; opacity: .85; }
+  .panel-actions { display: flex; gap: 8px; margin-top: 12px; }
+  .panel-actions .action { padding: 7px 14px; font-size: 13px; }
+
+  /* Full-page states (installing / restarting) — nothing else is clickable. */
+  .takeover { max-width: 520px; margin: 130px auto 0; text-align: center; color: var(--muted);
+    font-size: 15px; line-height: 1.7; padding: 0 20px; }
+  .takeover .big { font-size: 21px; font-weight: 700; color: var(--ink); margin-bottom: 14px; }
+  .takeover p { margin: 10px 0; }
+  .takeover .fine { font-size: 13px; color: #9ca3af; margin-top: 18px; }
+  .takeover .bar { height: 6px; background: #e9e7f5; border-radius: 999px; overflow: hidden;
+    margin: 18px auto; max-width: 320px; }
+  .takeover .bar-fill { height: 100%; width: 40%; border-radius: 999px;
+    background: linear-gradient(90deg, var(--indigo), #db2777);
+    animation: slide 1.4s ease-in-out infinite; }
+  @keyframes slide { 0% { margin-left: -40%; } 100% { margin-left: 100%; } }
 
   .error-box { background: #fef2f2; border: 1px solid #fecaca; color: #b91c1c;
     border-radius: 13px; padding: 15px 17px; text-align: left; font-size: 14px; line-height: 1.55; }
@@ -245,7 +283,8 @@
     font-size: 11.5px; background: #eef2ff; color: var(--indigo-deep); }
   .pill.off { background: #f1f5f9; color: var(--muted); }
   #spendLine { margin-top: 6px; }
-  #versionLine { margin-top: 5px; font-size: 11.5px; color: #b6bcc7; }
+  #versionLine { margin-top: 5px; font-size: 13px; color: var(--muted); }
+  #versionLine strong { color: var(--ink); font-weight: 700; }
   #versionLine .new { color: var(--indigo-deep); font-weight: 600; }
   #spendLine a { color: var(--indigo-deep); font-weight: 600; text-decoration: none; }
   #spendLine a:hover { text-decoration: underline; }
@@ -253,6 +292,7 @@
 </head>
 <body>
 <div class="topbar">
+  <span id="topVersion" title="The version of Meeting Notes you're running"></span>
   <button class="action" id="updateBtn" title="Check for and install app updates">⟳ Update</button>
   <button class="action" id="quitBtn" title="Quit the Meeting Notes app">⏻ Quit app</button>
 </div>
@@ -797,13 +837,32 @@ $("quitBtn").onclick = async () => {
 };
 
 // ----- version & updates -----------------------------------------------------
+// Everything here is shown IN the page rather than in browser pop-ups: pop-ups can be
+// silenced by the browser, and they vanish the moment you dismiss them — which makes a
+// working update look like nothing happened.
 let pendingUpdate = null;   // the newer version we found, if any
+let checking = false;       // a check is in flight (stops the background one clobbering a click)
+let manualCheck = false;    // ...and whether it was the user who asked
+let lastChecked = null;     // when we last successfully reached the update site
+
+function agoText(ts) {
+  if (!ts) return "";
+  const s = Math.round((Date.now() - ts) / 1000);
+  if (s < 45) return "checked just now";
+  if (s < 5400) return `checked ${Math.max(1, Math.round(s / 60))} min ago`;
+  return `checked ${Math.round(s / 3600)}h ago`;
+}
 
 function renderVersion(current, latest) {
   const el = $("versionLine");
-  if (!current) { el.innerHTML = ""; return; }
-  el.innerHTML = `Version ${esc(current)}`
-    + (latest ? ` · <span class="new">version ${esc(latest)} is available</span>` : "");
+  const chip = $("topVersion");
+  if (!current) { el.innerHTML = ""; chip.textContent = ""; return; }
+  const when = lastChecked ? ` · ${agoText(lastChecked)}` : "";
+  el.innerHTML = `Version <strong>${esc(current)}</strong>`
+    + (latest ? ` · <span class="new">version ${esc(latest)} is available</span>` : when);
+  // Also up in the corner, so the version is visible without scrolling.
+  chip.textContent = latest ? `v${current} → v${latest}` : `v${current}`;
+  chip.className = latest ? "new" : "";
 }
 
 function showUpdateReady(d) {
@@ -822,41 +881,94 @@ function resetUpdateBtn() {
   btn.classList.remove("ready");
 }
 
+/** A panel at the top of the page. Stays until dismissed — unlike a pop-up. */
+function showPanel(kind, html, actions) {
+  let box = $("updatePanel");
+  if (!box) {
+    box = document.createElement("div");
+    box.id = "updatePanel";
+    const wrap = document.querySelector(".wrap");
+    wrap.insertBefore(box, wrap.firstChild);
+  }
+  box.className = "update-panel " + kind;
+  box.innerHTML = html + (actions ? `<div class="panel-actions">${actions}</div>` : "");
+  box.scrollIntoView({ block: "nearest" });
+  return box;
+}
+function hidePanel() { const b = $("updatePanel"); if (b) b.remove(); }
+
+function noteList(notes) {
+  const n = (notes || []).filter(Boolean);
+  return n.length ? `<ul class="panel-notes">${n.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : "";
+}
+
 async function checkForUpdate(quiet) {
+  if (checking) return;                      // don't let two checks fight over the button
+  checking = true; manualCheck = !quiet;
   const btn = $("updateBtn");
   if (!quiet) { btn.disabled = true; btn.textContent = "Checking…"; }
   try {
-    const d = await (await fetch("/api/update_check")).json();
+    const d = await (await fetch("/api/update_check", { cache: "no-store" })).json();
     btn.disabled = false;
-    if (d.ok && d.update_available) { showUpdateReady(d); return; }
+    if (d.ok) lastChecked = Date.now();
+    if (d.ok && d.update_available) { showUpdateReady(d); if (!quiet) offerUpdate(); return; }
     if (d.ok) {                       // confirmed up to date — forget any earlier finding
       pendingUpdate = null;
       renderVersion(d.current, null);
     }
     if (quiet) { resetUpdateBtn(); return; }
-    // An explicit click deserves an explicit answer.
-    btn.textContent = d.ok ? "Up to date ✓" : "Couldn't check";
-    if (!d.ok && d.not_published) alert("Automatic updates aren't switched on yet.\n\n"
-      + "The app works exactly as normal — this only means there's nowhere for it to "
-      + "download updates from yet.");
-    else if (!d.ok && d.error) alert("Couldn't check for updates: " + d.error
-      + "\n\nThis usually just means you're offline. The app works as normal.");
-    setTimeout(resetUpdateBtn, 3000);
+    // An explicit click deserves an explicit, lasting answer.
+    if (d.ok) {
+      btn.textContent = `✓ On ${d.current}`;
+      showPanel("ok", `<strong>You're up to date.</strong> You're running version `
+        + `${esc(d.current)}, which is the latest — checked just now.`,
+        `<button class="action" onclick="hidePanel()">OK</button>`);
+    } else if (d.not_published) {
+      btn.textContent = "Couldn't check";
+      showPanel("warn", `<strong>Automatic updates aren't switched on yet.</strong> `
+        + `Meeting Notes works exactly as normal — there's just nowhere for it to `
+        + `download updates from yet. You're on version ${esc(d.current || "?")}.`,
+        `<button class="action" onclick="hidePanel()">OK</button>`);
+    } else {
+      btn.textContent = "Couldn't check";
+      showPanel("warn", `<strong>Couldn't check for updates right now.</strong> `
+        + `This usually just means you're not online. Meeting Notes works exactly as `
+        + `normal — you're on version ${esc(d.current || "?")}.`
+        + (d.reason ? `<div class="panel-detail">${esc(d.reason)}</div>` : ""),
+        `<button class="action" onclick="hidePanel()">OK</button>`);
+    }
+    setTimeout(resetUpdateBtn, 20000);
   } catch (e) {
     btn.disabled = false;
     resetUpdateBtn();
-    if (!quiet) alert("Couldn't check for updates — the app works as normal.");
+    if (!quiet) showPanel("warn", `<strong>Couldn't check for updates right now.</strong> `
+      + `Meeting Notes works exactly as normal.`,
+      `<button class="action" onclick="hidePanel()">OK</button>`);
+  } finally {
+    checking = false; manualCheck = false;
   }
+}
+
+/** Ask before installing — in the page, so it can't be silenced by the browser. */
+function offerUpdate() {
+  const d = pendingUpdate;
+  if (!d) return;
+  showPanel("offer",
+    `<strong>Version ${esc(d.latest)} is available</strong> (you're on ${esc(d.current)}).`
+    + noteList(d.notes)
+    + `<div class="panel-detail">The app will update and restart itself — about half a `
+    + `minute. Your recordings, notes and settings are kept.</div>`,
+    `<button class="action primary" id="doUpdateBtn">Update now</button>`
+    + `<button class="action" onclick="hidePanel()">Not now</button>`);
+  $("doUpdateBtn").onclick = installUpdate;
 }
 
 async function installUpdate() {
   const d = pendingUpdate;
-  const notes = (d.notes || []).map(n => "  • " + n).join("\n");
-  if (!confirm(`Update Meeting Notes to version ${d.latest}?\n\n`
-      + (notes ? `What's new:\n${notes}\n\n` : "")
-      + "The app will restart itself. Your recordings, notes and settings are kept.")) return;
-  const btn = $("updateBtn");
-  btn.disabled = true; btn.textContent = "Updating…"; btn.classList.remove("ready");
+  if (!d) return;
+  // Take over the page: this also makes it impossible to start a recording that the
+  // restart would throw away.
+  showInstalling(d.latest);
   let r;
   try {
     const resp = await fetch("/api/update", {
@@ -865,29 +977,51 @@ async function installUpdate() {
   } catch (e) {
     // Don't claim success just because the connection dropped — we can't tell from
     // here whether it worked, so say what we actually know.
-    btn.disabled = false; resetUpdateBtn();
-    alert("The update couldn't be completed — the app stopped responding.\n\n"
-      + "Quit Meeting Notes and start it again from your Desktop icon. If anything "
-      + "looks wrong, double-click “Restore Previous Version” on your Desktop.");
+    takeOver(`<div class="big">The update didn't finish</div>`
+      + `<p>Close this window, then open Meeting Notes again from your Desktop icon — `
+      + `it will put your previous version back by itself if anything was left half-done.</p>`);
     return;
   }
   if (!r.ok) {
-    btn.disabled = false; resetUpdateBtn();
-    alert("The update didn't go ahead.\n\n" + (r.error || "Unknown problem.")
-      + (r.swapped ? "" : "\n\nYour app is unchanged and still works."));
+    if (r.swapped) {
+      // Files were already being replaced — "try again" is the wrong next move.
+      takeOver(`<div class="big">The update didn't finish</div><p>${esc(r.error || "")}</p>`);
+      return;
+    }
+    hidePanel();
+    $("updateBtn").disabled = false; resetUpdateBtn();
+    showPanel("warn", `<strong>The update didn't go ahead.</strong> `
+      + `${esc(r.error || "Something unexpected happened.")} Your app is unchanged and `
+      + `still works normally.`,
+      `<button class="action" onclick="hidePanel()">OK</button>`);
     return;
   }
-  showRestarting(r.version);
+  showRestarting(r.version, r.relaunching);
 }
 
-function showRestarting(version) {
-  document.body.innerHTML = '<div id="restartBox" style="text-align:center;margin-top:140px;'
-    + 'font-family:-apple-system,BlinkMacSystemFont,sans-serif;color:#64748b;font-size:16px;'
-    + 'line-height:1.7;">'
-    + `Updated to version ${esc(version || "")} 🎉<br>`
-    + '<span id="restartMsg">Meeting Notes is restarting — this page will refresh itself.</span>'
-    + '<br><br><span style="font-size:13px;color:#9ca3af;">If anything looks wrong afterwards, '
-    + 'double-click “Restore Previous Version” on your Desktop.</span></div>';
+/** Replace the page with a single message (used for states that need full attention). */
+function takeOver(html) {
+  document.body.innerHTML = `<div class="takeover">${html}</div>`;
+}
+
+function showInstalling(version) {
+  takeOver(`<div class="big">Installing version ${esc(version || "")}…</div>`
+    + `<div class="bar"><div class="bar-fill"></div></div>`
+    + `<p>This takes a few seconds. Please don't close this window.</p>`);
+}
+
+function showRestarting(version, relaunching) {
+  if (relaunching === false) {
+    // The server already told us nothing is restarting — don't promise that it is.
+    takeOver(`<div class="big">Updated to version ${esc(version || "")} ✓</div>`
+      + `<p>Now close this window and open Meeting Notes again from your Desktop icon.</p>`);
+    return;
+  }
+  takeOver(`<div class="big">Updated to version ${esc(version || "")} ✓</div>`
+    + `<div class="bar"><div class="bar-fill"></div></div>`
+    + `<p id="restartMsg">Meeting Notes is restarting — this page will refresh itself.</p>`
+    + `<p class="fine">If anything looks wrong afterwards, double-click `
+    + `“Restore Previous Version” on your Desktop.</p>`);
   // Wait for the new version to come up, then reload onto it — so the user doesn't
   // have to do anything at all.
   let tries = 0;
@@ -897,19 +1031,33 @@ function showRestarting(version) {
       const s = await (await fetch("/api/status", { cache: "no-store" })).json();
       if (s && s.status !== undefined) { clearInterval(timer); location.reload(); return; }
     } catch (e) { /* still down — keep waiting */ }
+    const m = $("restartMsg");
+    if (m && tries === 10) m.textContent = "Still working — the first start after an "
+      + "update takes a little longer.";
+    if (m && tries === 24) m.textContent = "Almost there…";
     if (tries > 40) {
       clearInterval(timer);
-      const m = $("restartMsg");
-      if (m) m.textContent = "Start Meeting Notes again from your Desktop icon.";
+      if (m) m.textContent = "Open Meeting Notes again from your Desktop icon.";
+      const b = document.querySelector(".takeover .bar"); if (b) b.remove();
     }
   }, 1500);
 }
 
+/** Shown after the restart: proof, on the page he ends up looking at, that it worked. */
+function showJustUpdated(info) {
+  if (!info || !info.version) return;
+  showPanel("done", `<strong>Updated to version ${esc(info.version)} ✓</strong>`
+    + noteList(info.notes),
+    `<button class="action" onclick="hidePanel()">Great, thanks</button>`);
+}
+
 $("updateBtn").onclick = () => {
   if (last==="recording" || last==="processing") {
-    alert("Please wait until the current meeting has finished before updating."); return;
+    showPanel("warn", `<strong>A meeting is in progress.</strong> Please wait until it has `
+      + `finished before updating.`, `<button class="action" onclick="hidePanel()">OK</button>`);
+    return;
   }
-  if (pendingUpdate) installUpdate(); else checkForUpdate(false);
+  if (pendingUpdate) offerUpdate(); else checkForUpdate(false);
 };
 
 let last = null;
@@ -919,6 +1067,7 @@ async function poll() {
     $("notionBadge").textContent = s.notion_configured ? "connected ✓" : "not connected";
     $("notionBadge").className = "pill" + (s.notion_configured ? "" : " off");
     if (s.version && !pendingUpdate) renderVersion(s.version, null);
+    if (s.just_updated) showJustUpdated(s.just_updated);   // proof the update landed
     if (viewing && s.status!=="recording" && s.status!=="processing") return;
 
     if (s.status==="recording") {

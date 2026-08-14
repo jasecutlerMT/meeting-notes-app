@@ -1,10 +1,10 @@
 {
-  "version": "1.0.0",
+  "version": "1.0.1",
   "released": "2026-08-14",
   "notes": [
-    "The app now shows which version you're on, at the bottom of the page.",
-    "New Update button next to Quit — updates install themselves, no more dragging files.",
-    "YouTube links: damaged downloads are now detected and retried instead of quietly losing sections of your transcript.",
-    "Every meeting says whether it used API credits or your Claude subscription."
+    "The version you're on now shows in the top corner, next to the Update button — no scrolling to find it.",
+    "When an update finishes, the app now tells you so and lists what changed, instead of the message disappearing.",
+    "Update messages appear in the page and stay until you dismiss them, rather than as pop-ups that vanish.",
+    "\"Up to date\" now names the version, so you can tell it really checked."
   ]
 }
