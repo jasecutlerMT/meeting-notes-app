@@ -14,13 +14,20 @@ cd "$(dirname "$0")"
 # starts. It runs before Python, so it works even when the app itself can't start.
 UPD=".update"
 restore_backup() {
-  local b f
+  local b f name
   b="$(cat "$UPD/BACKUP_DIR" 2>/dev/null || true)"
   [ -n "$b" ] && [ -f "$b/BACKUP_READY" ] || return 1
-  for f in "$b"/*; do
+  # Remember which version we're backing out of, so the app doesn't offer that exact
+  # version straight back and get stuck in an install-fail-restore loop.
+  if [ -f version.json ]; then
+    sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' version.json \
+      | head -1 > "$UPD/BAD_VERSION" 2>/dev/null || true
+  fi
+  for f in "$b"/* "$b"/.[!.]*; do
     [ -f "$f" ] || continue
-    [ "$(basename "$f")" = "BACKUP_READY" ] && continue
-    cp -p "$f" "./$(basename "$f")" || return 1
+    name="$(basename "$f")"
+    [ "$name" = "BACKUP_READY" ] && continue
+    cp -p "$f" "./$name" || return 1
   done
   chmod +x ./*.sh 2>/dev/null || true
   rm -rf __pycache__

@@ -996,6 +996,23 @@ def _verify_staged(root: Path, current: str) -> str:
     if "exec .venv/bin/python app.py" not in (root / "start_ui.sh").read_text(
             encoding="utf-8", errors="replace"):
         raise RuntimeError("the update's start-up file looks damaged — nothing was changed")
+    # start_ui.sh carries the recovery logic that rescues a bad update, so a syntax
+    # error in it would disable the very thing that puts problems right.
+    for script in sorted(root.glob("*.sh")):
+        try:
+            r = subprocess.run(["bash", "-n", str(script)], capture_output=True,
+                               text=True, timeout=30)
+        except Exception:
+            break   # no bash to check with — don't block the update on that
+        if r.returncode != 0:
+            raise RuntimeError(f"the update's {script.name} looks damaged — nothing was changed")
+    # We install files, not folders. A release that adds one must fail loudly rather
+    # than quietly leaving part of itself uninstalled.
+    extra_dirs = [p.name for p in root.iterdir()
+                  if p.is_dir() and p.name not in UPDATE_KEEP and not p.name.startswith(".")]
+    if extra_dirs:
+        raise RuntimeError(f"this update contains a folder ({extra_dirs[0]}) that this "
+                           "version can't install — nothing was changed")
     # Every Python file must actually be valid Python, or the app won't start.
     pycdir = root / ".pyc-check"
     for py in sorted(root.glob("*.py")):
@@ -1220,6 +1237,18 @@ def _clear_pending_verify():
         pass
 
 
+def read_bad_version():
+    """A version that was rolled back because it wouldn't start, if any.
+
+    Recorded by start_ui.sh when it restores a backup, so the app doesn't offer the
+    same broken version straight back and loop for ever."""
+    try:
+        p = UPD / "BAD_VERSION"
+        return p.read_text(encoding="utf-8").strip() if p.exists() else ""
+    except Exception:
+        return ""
+
+
 def note_startup_version():
     """On start-up, work out whether we've just been installed by an update.
 
@@ -1335,6 +1364,12 @@ def perform_update():
                            "again from your Desktop icon — it will put your previous version "
                            "back by itself."), None, True
         shutil.rmtree(STAGED, ignore_errors=True)
+        # We never got as far as replacing anything, so clear the marker — otherwise the
+        # Update button would refuse to try again until the app was restarted.
+        try:
+            (UPD / "IN_PROGRESS").unlink(missing_ok=True)
+        except Exception:
+            pass
         if "nothing was changed" not in msg.lower():
             msg = f"{msg} — nothing was changed."
         return False, (msg[:1].upper() + msg[1:] if msg else msg), None, False
@@ -1805,11 +1840,21 @@ def api_update_check():
         # two half-messages stuck together.
         return jsonify({"ok": False, "current": APP_VERSION,
                         "reason": str(getattr(e, "reason", e))[:120]})
+    available = is_newer(version, APP_VERSION)
+    blocked = read_bad_version()
+    if available and blocked and version_tuple(version) == version_tuple(blocked):
+        # This exact version was rolled back because it wouldn't start. Offering it
+        # again would just loop: install, fail, restore, offer, install…
+        return jsonify({"ok": True, "current": APP_VERSION, "latest": version,
+                        "update_available": False, "released": released, "notes": notes,
+                        "blocked": version,
+                        "reason": f"version {version} was put back because it didn't start "
+                                  f"properly on this Mac"})
     return jsonify({
         "ok": True,
         "current": APP_VERSION,
         "latest": version,
-        "update_available": is_newer(version, APP_VERSION),
+        "update_available": available,
         "released": released,
         "notes": notes,
     })
@@ -1900,6 +1945,10 @@ if __name__ == "__main__":
         print("  Waiting for the previous copy to finish closing…")
         if not wait_for_port_free(25):
             print("  Meeting Notes is already running — opening it.")
+            # A copy IS serving, so this version plainly works. Clear the first-run
+            # check, or repeatedly double-clicking the icon would eventually be mistaken
+            # for a version that won't start and trigger a needless rollback.
+            _clear_pending_verify()
             open_app_page()
             sys.exit(0)
     # After an update the existing page reloads itself onto the new version, so don't
