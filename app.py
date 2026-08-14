@@ -1220,6 +1220,38 @@ def _clear_pending_verify():
         pass
 
 
+def note_startup_version():
+    """On start-up, work out whether we've just been installed by an update.
+
+    The version that RUNS an update is the old one, so it can't know how to leave a
+    note for its successor. This lets the newly-installed version notice for itself —
+    from the marker the swap leaves behind, or simply from the version having changed
+    since last launch — so the confirmation appears however the update was done."""
+    last_file = UPD / "LAST_RUN_VERSION"
+    try:
+        last = last_file.read_text(encoding="utf-8").strip() if last_file.exists() else ""
+    except Exception:
+        last = ""
+    just_swapped = (UPD / "PENDING_VERIFY").exists()
+    changed = bool(last) and last != APP_VERSION
+    # A first-ever run has neither signal, so it correctly says nothing.
+    if (just_swapped or changed) and not (UPD / "JUST_UPDATED").exists():
+        try:
+            info = json.loads((HERE / "version.json").read_text(encoding="utf-8"))
+            UPD.mkdir(parents=True, exist_ok=True)
+            (UPD / "JUST_UPDATED").write_text(json.dumps({
+                "version": str(info.get("version") or APP_VERSION),
+                "notes": [str(n) for n in (info.get("notes") or [])][:8],
+            }), encoding="utf-8")
+        except Exception:
+            pass
+    try:
+        UPD.mkdir(parents=True, exist_ok=True)
+        last_file.write_text(APP_VERSION, encoding="utf-8")
+    except Exception:
+        pass
+
+
 def take_just_updated():
     """The 'you were just updated' note, if there is one. Read once, then cleared.
 
@@ -1854,6 +1886,7 @@ if __name__ == "__main__":
     print("  Open this in your browser if it didn't open automatically:\n")
     print(f"      http://127.0.0.1:{PORT}\n")
     print("  Use the 'Quit app' button on the page (or Control-C here) to quit.\n")
+    note_startup_version()   # did an update just install us? then say so on the page
     # Don't let a closing Terminal window interrupt a file swap mid-update.
     for _sig in (signal.SIGHUP, signal.SIGTERM):
         try:

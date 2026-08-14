@@ -1,10 +1,11 @@
 {
-  "version": "1.0.1",
+  "version": "1.0.2",
   "released": "2026-08-14",
   "notes": [
     "The version you're on now shows in the top corner, next to the Update button — no scrolling to find it.",
     "When an update finishes, the app now tells you so and lists what changed, instead of the message disappearing.",
     "Update messages appear in the page and stay until you dismiss them, rather than as pop-ups that vanish.",
-    "\"Up to date\" now names the version, so you can tell it really checked."
+    "\"Up to date\" now names the version, so you can tell it really checked.",
+    "Updating no longer opens a second window, and shows a progress bar while it works."
   ]
 }
