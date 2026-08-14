@@ -31,8 +31,15 @@ else
 fi
 
 # 2) Make sure Claude Code is logged in with the Claude subscription.
+#
+# Check it the same way the app runs it — with any saved API key removed from the
+# environment. An API key takes precedence over the claude.ai login, so checking with
+# the key present would test the wrong thing entirely and report "logged in" when the
+# subscription isn't usable.
+claude_sub() { env -u ANTHROPIC_API_KEY -u ANTHROPIC_AUTH_TOKEN claude "$@"; }
+
 echo "[2/3] Checking that Claude Code is logged in…"
-if claude -p "Reply with exactly: ok" >/dev/null 2>&1; then
+if claude_sub -p "Reply with exactly: ok" >/dev/null 2>&1; then
   echo "      Logged in. ✓"
 else
   echo ""
@@ -42,8 +49,8 @@ else
   echo "      When you're back at the Claude Code screen, type /exit and press Return."
   echo ""
   read -r -p "      Press Return to open Claude Code… " _
-  claude || true
-  if ! claude -p "Reply with exactly: ok" >/dev/null 2>&1; then
+  claude_sub || true
+  if ! claude_sub -p "Reply with exactly: ok" >/dev/null 2>&1; then
     echo "❌ Claude Code still isn't logged in. Run this script again after logging in."
     exit 1
   fi

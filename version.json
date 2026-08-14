@@ -1,12 +1,10 @@
 {
-  "version": "1.0.4",
+  "version": "1.0.5",
   "released": "2026-08-14",
   "notes": [
-    "The version you're on now shows in the top corner, next to the Update button — no scrolling to find it.",
-    "When an update finishes, the app now tells you so and lists what changed, instead of the message disappearing.",
-    "Update messages appear in the page and stay until you dismiss them, rather than as pop-ups that vanish.",
-    "\"Up to date\" now names the version, so you can tell it really checked.",
-    "Updating no longer opens a second window, and shows a progress bar while it works.",
-    "If an update ever fails, the app won't offer that same broken version again."
+    "Fixes meetings failing part-way with a red \"claude.ai connectors are disabled\" error.",
+    "Summaries now always use your Claude subscription, even when an API key is also saved on this Mac.",
+    "If a summary does fail, the message now tells you the real reason instead of a technical warning.",
+    "Meetings that failed before can be finished from the \"unfinished meeting\" banner — they won't be transcribed again."
   ]
 }

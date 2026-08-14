@@ -140,11 +140,26 @@ def text_of(message) -> str:
 def run_claude_code(prompt: str) -> str:
     """Run one prompt through the Claude Code app (billed to the user's Claude
     subscription, not API credits) and return the response text."""
+    # Strip API-key credentials from this one subprocess. The app's launcher exports
+    # everything in .env — including ANTHROPIC_API_KEY — and Claude Code gives an API
+    # key precedence over the claude.ai login. Left in place, the "subscription" path
+    # would quietly bill the API key (or fail outright once its credits run dry, which
+    # is exactly how this bug was found). Only this subprocess is cleaned: the API
+    # summary path and Notion still need the key in the app's own environment.
+    env = {k: v for k, v in os.environ.items()
+           if k not in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN")}
     r = subprocess.run(["claude", "-p", "--output-format", "text"],
-                       input=prompt, capture_output=True, text=True, timeout=3600)
+                       input=prompt, capture_output=True, text=True, timeout=3600,
+                       env=env)
     out = (r.stdout or "").strip()
     if r.returncode != 0 or not out:
-        raise RuntimeError((r.stderr or out or "no output from Claude Code").strip()[:500])
+        # Surface the real reason, not the noise. Claude Code prints advisory warnings
+        # (e.g. about connectors) to stderr even when they aren't the problem.
+        lines = [l.strip() for l in (r.stderr or "").splitlines() if l.strip()]
+        lines = [l for l in lines
+                 if "connectors are disabled" not in l and "Unset it to load" not in l]
+        reason = " ".join(lines)[:400] or out[:400] or "it produced no output"
+        raise RuntimeError(f"Claude Code couldn't complete this: {reason}")
     return out
 
 
@@ -174,9 +189,8 @@ def summarize_via_subscription(session: Path, transcript: str, ctx_block: str, a
         print("\nERROR: Claude Code took too long — try again.", file=sys.stderr)
         return 1
     except Exception as e:
-        print(f"\nERROR from Claude Code: {e}\n\nIf you're not logged in (or your "
-              "subscription's usage window is used up), run: bash use_subscription.sh",
-              file=sys.stderr)
+        print(f"\nERROR: {e}\n\nIf you're not signed in to Claude (or your subscription's "
+              "usage window is used up), run:  bash use_subscription.sh", file=sys.stderr)
         return 1
     # No cost.json on purpose: subscription use isn't billed per meeting.
     # Leave a plain marker so the app can say, on this meeting's results,
