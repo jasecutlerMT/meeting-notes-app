@@ -1281,25 +1281,30 @@ def note_startup_version():
         pass
 
 
-def take_just_updated():
-    """The 'you were just updated' note, if there is one. Read once, then cleared.
+def read_just_updated():
+    """The 'you were just updated' note, if there is one.
 
-    Delivered from the server rather than the browser so that whichever tab the user
-    ends up looking at shows the confirmation."""
+    Deliberately does NOT clear the note: it is cleared only once a page has actually
+    shown it (see /api/update_seen). Clearing it on read would let the restart check
+    swallow it before the page that should display it ever loads — which would mean a
+    successful update once again finished with nothing on screen to show for it."""
     p = UPD / "JUST_UPDATED"
     if not p.exists():
         return None
     try:
         d = json.loads(p.read_text(encoding="utf-8"))
     except Exception:
-        d = None
-    try:
-        p.unlink()
-    except Exception:
-        pass
+        return None
     if not d or not d.get("version"):
         return None
     return {"version": str(d["version"]), "notes": [str(n) for n in (d.get("notes") or [])][:8]}
+
+
+def clear_just_updated():
+    try:
+        (UPD / "JUST_UPDATED").unlink(missing_ok=True)
+    except Exception:
+        pass
 
 
 def _verify_after_uptime(seconds: int = 120):
@@ -1562,7 +1567,7 @@ def api_status():
     s["session_name"] = Path(s["session"]).name if s["session"] else None
     s["notion_configured"] = notion_configured()
     s["version"] = APP_VERSION
-    s["just_updated"] = take_just_updated()
+    s["just_updated"] = read_just_updated()
     s["cost"] = read_cost(Path(s["session"])) if s["session"] else None
     s["billed"] = read_billing(Path(s["session"])) if s["session"] else None
     s["coverage"] = read_coverage(Path(s["session"])) if s["session"] else None
@@ -1819,6 +1824,22 @@ def api_quit():
         time.sleep(0.4)
         os._exit(0)
     threading.Thread(target=_bye, daemon=True).start()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/ping")
+def api_ping():
+    """Is the app up? Used to spot the restart after an update.
+
+    Kept free of side effects on purpose — checking whether the server is alive must
+    never consume the 'you were just updated' note meant for the page."""
+    return jsonify({"ok": True, "version": APP_VERSION})
+
+
+@app.route("/api/update_seen", methods=["POST"])
+def api_update_seen():
+    """The page has shown the 'updated' confirmation, so it can be cleared."""
+    clear_just_updated()
     return jsonify({"ok": True})
 
 

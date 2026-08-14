@@ -1001,6 +1001,10 @@ async function installUpdate() {
 
 /** Replace the page with a single message (used for states that need full attention). */
 function takeOver(html) {
+  // Stop the 1-second poller first: the page it updates no longer exists, so it would
+  // throw on every tick — and it would also read the "you were just updated" note that
+  // the reloaded page needs to show.
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
   document.body.innerHTML = `<div class="takeover">${html}</div>`;
 }
 
@@ -1028,8 +1032,10 @@ function showRestarting(version, relaunching) {
   const timer = setInterval(async () => {
     tries++;
     try {
-      const s = await (await fetch("/api/status", { cache: "no-store" })).json();
-      if (s && s.status !== undefined) { clearInterval(timer); location.reload(); return; }
+      // Ask a question with no side effects. Checking /api/status here would read (and
+      // clear) the "you were just updated" note before the reloaded page could show it.
+      const s = await (await fetch("/api/ping", { cache: "no-store" })).json();
+      if (s && s.ok) { clearInterval(timer); location.reload(); return; }
     } catch (e) { /* still down — keep waiting */ }
     const m = $("restartMsg");
     if (m && tries === 10) m.textContent = "Still working — the first start after an "
@@ -1044,11 +1050,16 @@ function showRestarting(version, relaunching) {
 }
 
 /** Shown after the restart: proof, on the page he ends up looking at, that it worked. */
+let updateBannerShown = false;
 function showJustUpdated(info) {
-  if (!info || !info.version) return;
+  if (!info || !info.version || updateBannerShown) return;
+  updateBannerShown = true;
   showPanel("done", `<strong>Updated to version ${esc(info.version)} ✓</strong>`
     + noteList(info.notes),
     `<button class="action" onclick="hidePanel()">Great, thanks</button>`);
+  // Only now tell the app it can forget the note — so it can never be cleared by
+  // anything other than actually putting it on screen.
+  fetch("/api/update_seen", { method: "POST" }).catch(() => {});
 }
 
 $("updateBtn").onclick = () => {
@@ -1061,6 +1072,7 @@ $("updateBtn").onclick = () => {
 };
 
 let last = null;
+let pollTimer = null;   // so a full-page takeover can stop the 1-second poll
 async function poll() {
   try {
     const s = await (await fetch("/api/status")).json();
@@ -1100,7 +1112,8 @@ async function poll() {
   } catch (e) {}
 }
 
-loadDevices(); loadRecent(); loadSpend(); loadUnfinished(); poll(); setInterval(poll, 1000);
+loadDevices(); loadRecent(); loadSpend(); loadUnfinished(); poll();
+pollTimer = setInterval(poll, 1000);
 // Look for a new version quietly in the background — never delays the page.
 setTimeout(() => checkForUpdate(true), 1500);
 </script>
