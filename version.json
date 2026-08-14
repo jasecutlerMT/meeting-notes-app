@@ -1,0 +1,10 @@
+{
+  "version": "1.0.0",
+  "released": "2026-08-14",
+  "notes": [
+    "The app now shows which version you're on, at the bottom of the page.",
+    "New Update button next to Quit — updates install themselves, no more dragging files.",
+    "YouTube links: damaged downloads are now detected and retried instead of quietly losing sections of your transcript.",
+    "Every meeting says whether it used API credits or your Claude subscription."
+  ]
+}

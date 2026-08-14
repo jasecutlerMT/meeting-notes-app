@@ -1,0 +1,959 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Meeting Notes</title>
+<style>
+  :root {
+    --indigo: #6366f1; --indigo-deep: #4f46e5;
+    --red: #ef4444; --red-deep: #dc2626;
+    --ink: #1f2937; --muted: #6b7280; --line: #e8e8f0; --soft: #f4f4f9;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+    color: var(--ink);
+    background: linear-gradient(180deg, #fafaff 0%, #f4f3fa 100%);
+    min-height: 100%; display: flex; justify-content: center; padding: 34px 18px 64px;
+  }
+  .wrap { width: 100%; max-width: 700px; }
+
+  header { text-align: center; margin-bottom: 22px; }
+  header h1 {
+    font-size: 26px; font-weight: 750; margin: 0; letter-spacing: -0.02em;
+    background: linear-gradient(90deg, var(--indigo-deep), #db2777);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  header p { color: var(--muted); margin: 5px 0 0; font-size: 13.5px; }
+
+  .card {
+    background: #fff; border: 1px solid var(--line); border-radius: 20px;
+    box-shadow: 0 12px 34px -20px rgba(30, 27, 75, 0.25);
+    padding: 26px 28px; text-align: center;
+  }
+
+  /* ---------- primary Record | Import tabs ---------- */
+  .htabs { display: flex; gap: 5px; background: var(--soft); border-radius: 13px;
+    padding: 4px; margin: 0 auto 20px; max-width: 340px; }
+  .htab { flex: 1; border: none; background: transparent; color: var(--muted);
+    font-family: inherit; font-size: 14.5px; font-weight: 650; padding: 10px;
+    border-radius: 10px; cursor: pointer; transition: all .15s; }
+  .htab.active { background: #fff; color: var(--indigo-deep);
+    box-shadow: 0 2px 8px -2px rgba(79,70,229,0.28); }
+
+  /* ---------- shared form bits ---------- */
+  .segmented { display: flex; gap: 5px; background: var(--soft); border-radius: 11px;
+    padding: 4px; margin: 0 auto 6px; max-width: 400px; }
+  .seg { flex: 1; border: none; background: transparent; color: var(--muted);
+    font-family: inherit; font-size: 13px; font-weight: 600; padding: 8px 6px;
+    border-radius: 8px; cursor: pointer; transition: all .15s; }
+  .seg.active { background: #fff; color: var(--indigo-deep);
+    box-shadow: 0 2px 6px -2px rgba(79,70,229,0.25); }
+  .mode-hint { color: var(--muted); font-size: 12.5px; margin: 0 0 18px; min-height: 17px; }
+
+  .meta { display: flex; gap: 10px; margin-bottom: 12px; }
+  .field { text-align: left; }
+  .field.grow { flex: 1; }
+  label { display: block; font-size: 11px; font-weight: 650; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.05em; margin: 0 0 5px 2px; }
+  input, select, textarea {
+    width: 100%; padding: 10px 12px; font-size: 14.5px; color: var(--ink);
+    border: 1px solid var(--line); border-radius: 11px; background: #fff;
+    font-family: inherit; outline: none; transition: border-color .15s, box-shadow .15s; }
+  textarea { resize: vertical; line-height: 1.45; }
+  input:focus, select:focus, textarea:focus { border-color: var(--indigo);
+    box-shadow: 0 0 0 3px rgba(99,102,241,0.13); }
+  ::placeholder { color: #a7abb6; }
+  .context-field { text-align: left; margin-bottom: 20px; }
+
+  .btn-wrap { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+  .record-btn {
+    width: 138px; height: 138px; border-radius: 50%; border: none; cursor: pointer;
+    color: #fff; font-size: 16px; font-weight: 650; font-family: inherit;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 9px;
+    background: linear-gradient(145deg, var(--indigo), var(--indigo-deep));
+    box-shadow: 0 12px 26px -8px rgba(79,70,229,0.5);
+    transition: transform .12s ease, box-shadow .2s ease; }
+  .record-btn:hover { transform: translateY(-2px) scale(1.02); }
+  .record-btn:active { transform: scale(0.98); }
+  .record-btn .dot { width: 18px; height: 18px; border-radius: 50%; background: #fff; }
+  .record-btn.recording { background: linear-gradient(145deg, var(--red), var(--red-deep));
+    animation: pulse 1.8s infinite; }
+  .record-btn.recording .dot { width: 24px; height: 24px; border-radius: 6px; }
+  @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(239,68,68,0.45); }
+    70% { box-shadow: 0 0 0 24px rgba(239,68,68,0); } 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0); } }
+  .record-btn[disabled] { opacity: .55; cursor: default; transform: none; }
+
+  /* ---------- import pane ---------- */
+  .import-fields { text-align: left; display: flex; flex-direction: column; gap: 10px;
+    margin-bottom: 14px; }
+  .import-row { display: flex; gap: 8px; margin-bottom: 12px; }
+  .import-row input { flex: 1; }
+  .import-row .action { white-space: nowrap; }
+  .upload-btn { display: block; cursor: pointer; border: 1.5px dashed #c7d2fe;
+    background: #f8f8ff; color: var(--indigo-deep); font-weight: 600; font-size: 14px;
+    padding: 14px; border-radius: 12px; transition: background .15s, border-color .15s; }
+  .upload-btn:hover { background: #eef2ff; border-color: var(--indigo); }
+  .import-msg { font-size: 13px; margin-top: 10px; color: var(--indigo-deep); }
+  .import-msg.warn { color: #b45309; }
+
+  /* ---------- shared options bar ---------- */
+  .options { display: flex; justify-content: space-between; align-items: center; gap: 14px;
+    flex-wrap: wrap; border-top: 1px solid var(--line); margin-top: 24px; padding-top: 16px; }
+  .opt { display: flex; align-items: center; gap: 9px; }
+  .opt-label { font-size: 11px; font-weight: 650; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.05em; }
+  .mini-seg { display: flex; gap: 4px; background: var(--soft); border-radius: 10px; padding: 3px; }
+  .qual-card { border: none; background: transparent; color: var(--muted); cursor: pointer;
+    font-family: inherit; font-size: 12.5px; font-weight: 600; padding: 6px 11px;
+    border-radius: 8px; transition: all .15s; }
+  .qual-card.active { background: #fff; color: var(--indigo-deep);
+    box-shadow: 0 2px 6px -2px rgba(79,70,229,0.25); }
+  .chk { display: flex; align-items: center; gap: 7px; cursor: pointer;
+    font-size: 13px; font-weight: 600; color: var(--ink); text-transform: none; letter-spacing: 0; margin: 0; }
+  .chk input { width: 16px; height: 16px; accent-color: var(--indigo); cursor: pointer; margin: 0; }
+  .opt-note { text-align: left; color: #9ca3af; font-size: 11.5px; margin-top: 8px; }
+
+  .hint { color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+
+  /* ---------- recording / processing ---------- */
+  .timer { font-size: 42px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .status-line { color: var(--muted); font-size: 14.5px; min-height: 21px; }
+  .spinner { width: 42px; height: 42px; border-radius: 50%;
+    border: 4px solid rgba(99,102,241,0.18); border-top-color: var(--indigo);
+    animation: spin 0.9s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .progress-wrap { width: 100%; max-width: 420px; margin: 4px auto 0; }
+  .progress-track { height: 12px; border-radius: 999px; background: #ecebf6; overflow: hidden; }
+  .progress-fill { height: 100%; width: 0%; border-radius: 999px;
+    background: linear-gradient(90deg, var(--indigo), #db2777);
+    transition: width .6s cubic-bezier(.4,0,.2,1); }
+  .progress-meta { display: flex; justify-content: space-between; align-items: baseline;
+    margin-top: 8px; font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .progress-meta .pct { font-weight: 700; font-size: 15px; color: var(--indigo-deep); }
+
+  .rec-warn { background: #fef2f2; border: 1px solid #fecaca; color: #b91c1c;
+    border-radius: 11px; padding: 10px 14px; font-size: 13.5px; line-height: 1.5;
+    max-width: 440px; text-align: left; }
+
+  /* ---------- done view ---------- */
+  .done-top { display: flex; justify-content: space-between; align-items: center;
+    gap: 10px; margin-bottom: 12px; }
+  .took { color: var(--muted); font-size: 12.5px; text-align: right;
+    font-variant-numeric: tabular-nums; }
+  .tabs { display: flex; gap: 4px; background: var(--soft); border-radius: 11px; padding: 4px;
+    margin: 0 auto 16px; max-width: 320px; }
+  .tab { flex: 1; border: none; background: transparent; color: var(--muted);
+    font-family: inherit; font-size: 13.5px; font-weight: 600; padding: 8px;
+    border-radius: 8px; cursor: pointer; }
+  .tab.active { background: #fff; color: var(--indigo-deep);
+    box-shadow: 0 2px 6px -2px rgba(79,70,229,0.25); }
+
+  .result { text-align: left; animation: fade .3s ease; }
+  @keyframes fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; } }
+  .doc { background: #fff; border: 1px solid var(--line); border-radius: 14px;
+    padding: 20px 22px; line-height: 1.6; font-size: 15px; color: #111827;
+    max-height: 60vh; overflow-y: auto; }
+  .doc h1 { font-size: 18px; margin: 16px 0 8px; }
+  .doc h2 { font-size: 15.5px; margin: 18px 0 8px; color: var(--indigo-deep);
+    padding-top: 12px; border-top: 1px solid var(--line); }
+  .doc h2:first-child, .doc h1:first-child { border: 0; padding-top: 0; margin-top: 0; }
+  .doc ul { margin: 6px 0; padding-left: 22px; }
+  .doc li { margin: 4px 0; }
+  .doc li.task { list-style: none; margin-left: -22px; }
+  .doc li.task::before { content: "☐"; margin-right: 8px; color: var(--indigo); }
+  .doc li.task.done::before { content: "☑"; }
+  .doc p { margin: 8px 0; }
+  .doc .tldr { background: #f5f4ff; border-radius: 10px; padding: 11px 13px; margin: 0 0 6px; }
+
+  .transcript { background: #fff; border: 1px solid var(--line); border-radius: 14px;
+    padding: 12px 16px; max-height: 60vh; overflow-y: auto; }
+  .turn { padding: 9px 12px; margin: 4px 0; border-left: 3px solid var(--line);
+    border-radius: 0 8px 8px 0; }
+  .turn:hover { background: #fafaff; }
+  .turn-head { display: flex; align-items: baseline; gap: 9px; margin-bottom: 3px; }
+  .who { font-weight: 700; font-size: 13px; }
+  .ts { color: #9ca3af; font-size: 11.5px; font-variant-numeric: tabular-nums; }
+  .turn-text { font-size: 14.5px; line-height: 1.55; color: #111827; }
+  .transcript .plain { padding: 6px 12px; font-size: 14.5px; line-height: 1.55; }
+  .transcript .empty { color: var(--muted); padding: 16px; text-align: center; }
+
+  .notion-row { margin-top: 12px; font-size: 13.5px; text-align: left; }
+  .notion-row a { color: var(--indigo-deep); font-weight: 600; text-decoration: none; }
+  .notion-row a:hover { text-decoration: underline; }
+  .notion-row.warn { color: #b45309; }
+  .cost-row { margin-top: 10px; font-size: 13px; color: var(--muted); text-align: left;
+              border-radius: 10px; padding: 9px 12px; }
+  .cost-row strong { color: var(--ink); }
+  .cost-row.api { background: #fff7ed; color: #9a3412; }      /* orange-ish: it cost credits */
+  .cost-row.api strong { color: #9a3412; }
+  .cost-row.sub { background: #ecfdf5; color: #047857; }      /* green: free on subscription */
+  .cost-row.sub strong { color: #047857; }
+  .cover-row { margin-top: 10px; font-size: 13px; text-align: left; line-height: 1.5;
+               border-radius: 10px; padding: 9px 12px; }
+  .cover-row strong { font-weight: 600; }
+  .cover-row.warn { background: #fffbeb; color: #92400e; }    /* amber: audio may be damaged */
+  .cover-row.ok { background: #f8fafc; color: var(--muted); } /* quiet note: we patched it */
+
+  .actions { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 16px; justify-content: center; }
+  .action { border: 1px solid var(--line); background: #fff; color: var(--ink);
+    padding: 9px 15px; border-radius: 10px; font-size: 13.5px; font-weight: 600;
+    font-family: inherit; cursor: pointer; transition: background .15s, border-color .15s; }
+  .action:hover { background: #f8fafc; border-color: #cbd5e1; }
+  .action.primary { background: var(--indigo); color: #fff; border-color: var(--indigo); }
+  .action.primary:hover { background: var(--indigo-deep); }
+  .action.danger { color: #b91c1c; border-color: #fecaca; }
+  .action.danger:hover { background: #fef2f2; border-color: #fca5a5; }
+
+  .resume-box { background: #fffbeb; border: 1px solid #fde68a; border-radius: 13px;
+    padding: 13px 15px; margin-bottom: 18px; text-align: left; font-size: 14px;
+    color: #78350f; line-height: 1.5; }
+  .resume-box .when { color: #b45309; font-size: 12px; }
+  .resume-actions { display: flex; gap: 8px; margin-top: 10px; }
+  .resume-actions .action { padding: 7px 13px; font-size: 13px; }
+
+  .topbar { position: fixed; top: 16px; right: 20px; z-index: 10; display: flex; gap: 9px; }
+  .topbar .action { font-size: 13.5px; padding: 10px 18px; border-radius: 11px;
+    box-shadow: 0 6px 18px -9px rgba(30,27,75,0.35); }
+  #quitBtn:hover { background: #fef2f2; border-color: #fecaca; color: #b91c1c; }
+  /* Turns solid indigo when a new version is waiting, so it's easy to notice. */
+  #updateBtn.ready { background: var(--indigo); color: #fff; border-color: var(--indigo); }
+  #updateBtn.ready:hover { background: var(--indigo-deep); }
+  #updateBtn:disabled { opacity: .65; cursor: default; }
+
+  .error-box { background: #fef2f2; border: 1px solid #fecaca; color: #b91c1c;
+    border-radius: 13px; padding: 15px 17px; text-align: left; font-size: 14px; line-height: 1.55; }
+
+  .recent { margin-top: 24px; }
+  .recent h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em;
+    color: var(--muted); margin: 0 0 9px 4px; font-weight: 650; }
+  .recent .item { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+    background: #fff; border: 1px solid var(--line); border-radius: 12px;
+    padding: 12px 15px; margin-bottom: 7px; cursor: pointer; font-family: inherit;
+    font-size: 14px; color: var(--ink); transition: transform .1s, box-shadow .15s, border-color .15s; }
+  .recent .item:hover { transform: translateY(-1px); border-color: #d6d9f5;
+    box-shadow: 0 8px 20px -14px rgba(79,70,229,0.45); }
+  .recent .item .when { color: var(--muted); font-size: 12px; margin-left: auto;
+    font-variant-numeric: tabular-nums; }
+  .recent .empty { color: var(--muted); font-size: 13.5px; padding: 4px; }
+
+  .hidden { display: none !important; }
+  footer { text-align: center; color: #9ca3af; font-size: 12px; margin-top: 20px; line-height: 1.7; }
+  .pill { display: inline-block; padding: 2px 9px; border-radius: 999px; font-weight: 600;
+    font-size: 11.5px; background: #eef2ff; color: var(--indigo-deep); }
+  .pill.off { background: #f1f5f9; color: var(--muted); }
+  #spendLine { margin-top: 6px; }
+  #versionLine { margin-top: 5px; font-size: 11.5px; color: #b6bcc7; }
+  #versionLine .new { color: var(--indigo-deep); font-weight: 600; }
+  #spendLine a { color: var(--indigo-deep); font-weight: 600; text-decoration: none; }
+  #spendLine a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+<div class="topbar">
+  <button class="action" id="updateBtn" title="Check for and install app updates">⟳ Update</button>
+  <button class="action" id="quitBtn" title="Quit the Meeting Notes app">⏻ Quit app</button>
+</div>
+<div class="wrap">
+  <header>
+    <h1>Meeting Notes</h1>
+    <p>Record a meeting or import audio — get a polished summary &amp; transcript.</p>
+  </header>
+
+  <div class="card">
+    <!-- IDLE -->
+    <div id="view-idle">
+      <div class="resume-box hidden" id="resumeBox"></div>
+
+      <div class="htabs">
+        <button class="htab active" data-home="record">🎙️ Record</button>
+        <button class="htab" data-home="import">⬇️ Import</button>
+      </div>
+
+      <!-- RECORD pane -->
+      <div id="recordPane">
+        <div class="segmented">
+          <button class="seg active" data-mode="mac">💻 Call on this Mac</button>
+          <button class="seg" data-mode="room">🎙️ In the room / phone</button>
+        </div>
+        <div class="mode-hint" id="modeHint"></div>
+        <div class="meta">
+          <div class="field grow">
+            <label for="title">Meeting name (optional)</label>
+            <input id="title" type="text" placeholder="e.g. Team Sync" autocomplete="off">
+          </div>
+          <div class="field" style="width: 210px;">
+            <label for="mic">Microphone</label>
+            <select id="mic"></select>
+          </div>
+        </div>
+        <div class="context-field">
+          <label for="context">Context (optional) — who's here &amp; what it's about</label>
+          <textarea id="context" rows="2" placeholder="e.g. Me (Jason) and Sarah from Finance — quarterly budget review."></textarea>
+        </div>
+        <div class="btn-wrap">
+          <button id="startBtn" class="record-btn"><span class="dot"></span>Start</button>
+          <div class="hint" id="idleHint">Tip: wear headphones on calls for the cleanest result.</div>
+        </div>
+      </div>
+
+      <!-- IMPORT pane -->
+      <div id="importPane" class="hidden">
+        <div class="import-fields">
+          <div class="field">
+            <label for="importTitle">Name (optional)</label>
+            <input id="importTitle" type="text" autocomplete="off"
+                   placeholder="e.g. Acme podcast, ep. 12">
+          </div>
+          <div class="field">
+            <label for="importContext">Context (optional) — who's speaking &amp; what it's about</label>
+            <textarea id="importContext" rows="2"
+                   placeholder="e.g. Host Ana Ruiz interviews Dr. Lee about sleep science."></textarea>
+          </div>
+        </div>
+        <div class="import-row">
+          <input id="ytUrl" type="text" placeholder="Paste a YouTube link…" autocomplete="off">
+          <button class="action" id="ytBtn">Transcribe link</button>
+        </div>
+        <label class="upload-btn" for="fileInput">⬆️&nbsp; Upload an audio or video file</label>
+        <input id="fileInput" type="file" accept="audio/*,video/*" class="hidden">
+        <div class="hint" style="margin-top:10px;">Meetings, podcasts, interviews — most formats work.</div>
+        <div class="import-msg hidden" id="importMsg"></div>
+      </div>
+
+      <!-- shared options -->
+      <div class="options">
+        <div class="opt">
+          <span class="opt-label">Transcription</span>
+          <div class="mini-seg" id="quality">
+            <button type="button" class="qual-card active" data-quality="fast"
+              title="Whisper Turbo — quickest by far. Excellent for English & Spanish.">⚡ Fast</button>
+            <button type="button" class="qual-card" data-quality="best"
+              title="Full Whisper large-v3 — most accurate, best for Chinese & tough audio. Several times slower; one-time ~3 GB download.">🎯 Best</button>
+          </div>
+        </div>
+        <div class="opt">
+          <label class="chk"
+            title="Labels each speaker (Speaker 1, 2…) on in-room / phone recordings & imports. This is the slowest step — untick to finish much faster.">
+            <input type="checkbox" id="diarizeChk" checked>
+            <span>Label who's speaking</span>
+          </label>
+        </div>
+      </div>
+      <div class="opt-note">These apply to recordings and imports. “Best” and speaker labels are slower — hover each for details.</div>
+    </div>
+
+    <!-- RECORDING -->
+    <div id="view-recording" class="hidden">
+      <div class="btn-wrap">
+        <button id="stopBtn" class="record-btn recording"><span class="dot"></span>Stop</button>
+        <div class="timer" id="timer">00:00</div>
+        <div class="status-line" id="recLabel">Recording…</div>
+        <div class="rec-warn hidden" id="recWarn"></div>
+        <div class="hint">Stop finishes the meeting and writes your notes.</div>
+        <button class="action danger" id="cancelBtn">✕ Cancel — discard, don't transcribe</button>
+      </div>
+    </div>
+
+    <!-- PROCESSING -->
+    <div id="view-processing" class="hidden">
+      <div class="btn-wrap">
+        <div class="spinner"></div>
+        <div class="status-line" id="procStep">Working…</div>
+        <div class="progress-wrap">
+          <div class="progress-track"><div class="progress-fill" id="procFill"></div></div>
+          <div class="progress-meta">
+            <span class="pct" id="procPct">0%</span>
+            <span id="procEta">Estimating time remaining…</span>
+          </div>
+        </div>
+        <div class="hint">You'll get a notification when it's ready — feel free to do something else.</div>
+        <button class="action danger" id="cancelProcBtn">✕ Cancel — discard this meeting</button>
+      </div>
+    </div>
+
+    <!-- DONE -->
+    <div id="view-done" class="hidden">
+      <div class="done-top">
+        <button class="action" id="homeBtn">← Home</button>
+        <div class="took hidden" id="tookRow"></div>
+      </div>
+      <div class="tabs">
+        <button class="tab active" data-tab="summary">Summary</button>
+        <button class="tab" data-tab="transcript">Full transcript</button>
+      </div>
+      <div id="summaryPane" class="result">
+        <div class="doc" id="summaryDoc"></div>
+        <div class="notion-row hidden" id="notionRow"></div>
+        <div class="cover-row hidden" id="coverageRow"></div>
+        <div class="cost-row hidden" id="costRow"></div>
+      </div>
+      <div id="transcriptPane" class="result hidden">
+        <div class="transcript" id="transcriptDoc"></div>
+        <div class="actions">
+          <button class="action" id="wordBtn">📄 Download as Word document</button>
+        </div>
+      </div>
+      <div class="actions">
+        <button class="action primary" id="newBtn">＋ New recording</button>
+        <button class="action" id="saveAudioBtn">💾 Save audio to Desktop</button>
+        <button class="action" id="folderBtn">📂 Open folder</button>
+      </div>
+    </div>
+
+    <!-- ERROR -->
+    <div id="view-error" class="hidden">
+      <div class="error-box" id="errorText"></div>
+      <div class="actions"><button class="action primary" id="errNewBtn">Try again</button></div>
+    </div>
+  </div>
+
+  <div class="recent">
+    <h3>Recent meetings</h3>
+    <div id="recentList"><div class="empty">No meetings yet.</div></div>
+  </div>
+
+  <footer>
+    Runs on your Mac. Recording &amp; transcription are local; only the summary uses Claude.<br>
+    Notion: <span class="pill off" id="notionBadge">checking…</span>
+    <div id="spendLine"></div>
+    <div id="versionLine"></div>
+  </footer>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let viewing = null;          // a past meeting being shown
+let currentSession = null;   // session name shown in the done view
+let transcriptCache = {};    // name -> transcript text
+let mode = "mac";
+let quality = localStorage.getItem("mn_quality") === "best" ? "best" : "fast";
+const diarizeOn = () => $("diarizeChk").checked;
+const MODE_HINTS = {
+  mac:  "Captures the call's audio + your mic, labelled You / Them.",
+  room: "Records what your Mac's mic hears. Put a phone call on speaker near your Mac."
+};
+const SPK_COLORS = ["#4f46e5","#db2777","#0d9488","#b45309","#2563eb","#7c3aed","#0369a1","#be123c"];
+
+function show(view) {
+  for (const v of ["idle","recording","processing","done","error"])
+    $("view-" + v).classList.toggle("hidden", v !== view);
+}
+function fmtTime(s) {
+  s = Math.max(0, s|0);
+  const h=(s/3600)|0, m=((s%3600)/60)|0, ss=s%60, pad=(n)=>String(n).padStart(2,"0");
+  return h ? `${h}:${pad(m)}:${pad(ss)}` : `${pad(m)}:${pad(ss)}`;
+}
+function fmtEta(sec) {
+  if (sec===null || sec===undefined) return "Estimating time remaining…";
+  sec = Math.max(0, sec|0);
+  if (sec <= 45) return "about " + Math.max(5, Math.round(sec/5)*5) + " sec left";
+  if (sec < 90) return "about 1 min left";
+  return "about " + Math.round(sec/60) + " min left";
+}
+function fmtDur(s) {
+  s = Math.max(0, s|0);
+  if (s < 60) return s + "s";
+  if (s < 3600) return ((s/60)|0) + "m " + String(s%60).padStart(2,"0") + "s";
+  return ((s/3600)|0) + "h " + String(((s%3600)/60)|0).padStart(2,"0") + "m";
+}
+function renderTook(took, phases) {
+  const el = $("tookRow");
+  if (took === null || took === undefined) { el.classList.add("hidden"); el.textContent=""; return; }
+  const NAMES = { transcribe:"transcribe", diarize:"speakers", summarize:"summary", notion:"Notion" };
+  let parts = [], sum = 0;
+  for (const k of ["transcribe","diarize","summarize","notion"]) {
+    const v = (phases||{})[k] || 0; sum += v;
+    if (v >= 5) parts.push(NAMES[k] + " " + fmtDur(v));
+  }
+  const prep = took - sum;
+  if (prep >= 20) parts.unshift("download/prep " + fmtDur(prep));
+  el.classList.remove("hidden");
+  el.textContent = "⏱ Ready in " + fmtDur(took) + (parts.length ? " — " + parts.join(" · ") : "");
+}
+function prettyName(name) {
+  const m = name.match(/^(\d{4})-(\d{2})-(\d{2})_(\d{2})(\d{2})(\d{2})(?:_(.+))?$/);
+  if (!m) return { title: name.replace(/_/g," "), when: "" };
+  const months=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  return { title: m[7] ? m[7].replace(/_/g," ") : "Untitled meeting",
+           when: `${+m[3]} ${months[+m[2]-1]} ${m[1]}, ${m[4]}:${m[5]}` };
+}
+function esc(t){ return t.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+function inline(t){ return esc(t).replace(/\*\*(.+?)\*\*/g,"<strong>$1</strong>"); }
+function renderMarkdown(md) {
+  const lines = (md||"").split("\n"); let html="", inList=false;
+  const close=()=>{ if(inList){ html+="</ul>"; inList=false; } };
+  for (let raw of lines) {
+    const line = raw.replace(/\s+$/,"");
+    if (!line.trim()) { close(); continue; }
+    let m;
+    if ((m=line.match(/^##\s+(.*)/))) { close(); html+=`<h2>${inline(m[1])}</h2>`; }
+    else if ((m=line.match(/^#\s+(.*)/))) { close(); html+=`<h1>${inline(m[1])}</h1>`; }
+    else if ((m=line.match(/^[-*]\s+\[([ xX])\]\s+(.*)/))) {
+      if(!inList){ html+="<ul>"; inList=true; }
+      html+=`<li class="task${m[1].toLowerCase()==="x"?" done":""}">${inline(m[2])}</li>`;
+    }
+    else if ((m=line.match(/^[-*]\s+(.*)/))) {
+      if(!inList){ html+="<ul>"; inList=true; } html+=`<li>${inline(m[1])}</li>`;
+    }
+    else { close(); const cls=/^\*\*tl;?dr/i.test(line)?' class="tldr"':''; html+=`<p${cls}>${inline(line)}</p>`; }
+  }
+  close(); return html;
+}
+
+// Parse one transcript line into {ts, speaker, text}
+function parseLine(line) {
+  let ts = "", rest = line.trim();
+  let m = rest.match(/^\[(\d{1,2}:\d{2}(?::\d{2})?)\]\s*(.*)$/);
+  if (m) { ts = m[1]; rest = m[2]; }
+  let speaker = "";
+  const sm = rest.match(/^(You|Them|Speaker\s*\d+|[A-Z][A-Za-z0-9 .'\-]{0,28}):\s+(.*)$/);
+  if (sm) { speaker = sm[1].replace(/\s+/g," ").trim(); rest = sm[2]; }
+  return { ts, speaker, text: rest };
+}
+function renderTranscript(text) {
+  const colors = {}; let nextC = 0;
+  const colorFor = (s) => { if (!(s in colors)) { colors[s] = SPK_COLORS[nextC % SPK_COLORS.length]; nextC++; } return colors[s]; };
+  const lines = (text||"").split("\n").map(l=>l.replace(/\s+$/,""))
+                  .filter(l => l.trim() && !l.startsWith("#"));
+  if (!lines.length) return '<div class="empty">No transcript text found.</div>';
+  // group consecutive lines by speaker into turns
+  const turns = []; let cur = null;
+  for (const line of lines) {
+    const p = parseLine(line);
+    if (cur && cur.speaker === p.speaker) { cur.text += " " + p.text; }
+    else { cur = { ts: p.ts, speaker: p.speaker, text: p.text }; turns.push(cur); }
+  }
+  let html = "";
+  for (const t of turns) {
+    if (t.speaker) {
+      const c = colorFor(t.speaker);
+      html += `<div class="turn" style="border-left-color:${c}">
+        <div class="turn-head"><span class="who" style="color:${c}">${esc(t.speaker)}</span>${t.ts?`<span class="ts">${t.ts}</span>`:""}</div>
+        <div class="turn-text">${esc(t.text)}</div></div>`;
+    } else {
+      html += `<div class="plain">${t.ts?`<span class="ts">${t.ts}</span> `:""}${esc(t.text)}</div>`;
+    }
+  }
+  return html;
+}
+
+function setTab(which) {
+  $("summaryPane").classList.toggle("hidden", which!=="summary");
+  $("transcriptPane").classList.toggle("hidden", which!=="transcript");
+  document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t.dataset.tab===which));
+  if (which==="transcript") loadTranscript();
+}
+async function loadTranscript() {
+  if (!currentSession) return;
+  if (transcriptCache[currentSession] !== undefined) {
+    $("transcriptDoc").innerHTML = renderTranscript(transcriptCache[currentSession]); return;
+  }
+  $("transcriptDoc").innerHTML = '<div class="empty">Loading…</div>';
+  try {
+    const d = await (await fetch("/api/transcript/"+encodeURIComponent(currentSession))).json();
+    const txt = d.ok ? (d.transcript||"") : "";
+    transcriptCache[currentSession] = txt;
+    $("transcriptDoc").innerHTML = renderTranscript(txt);
+  } catch (e) { $("transcriptDoc").innerHTML = '<div class="empty">Could not load the transcript.</div>'; }
+}
+document.querySelectorAll(".tab").forEach(t => t.onclick = () => setTab(t.dataset.tab));
+
+// Record | Import home tabs
+let homeTab = localStorage.getItem("mn_hometab") === "import" ? "import" : "record";
+function setHomeTab(t) {
+  homeTab = t; localStorage.setItem("mn_hometab", t);
+  $("recordPane").classList.toggle("hidden", t !== "record");
+  $("importPane").classList.toggle("hidden", t !== "import");
+  document.querySelectorAll(".htab").forEach(b => b.classList.toggle("active", b.dataset.home === t));
+}
+document.querySelectorAll(".htab").forEach(b => b.onclick = () => setHomeTab(b.dataset.home));
+setHomeTab(homeTab);
+
+function renderNotion(s) {
+  const row = $("notionRow");
+  if (s.notion_url) { row.className="notion-row"; row.innerHTML = `📝 Saved to Notion — <a href="${s.notion_url}" target="_blank">open in Notion ↗</a>`; }
+  else if (s.notion_error) { row.className="notion-row warn"; row.textContent = "Couldn't save to Notion: " + s.notion_error; }
+  else { row.className="notion-row hidden"; row.innerHTML=""; }
+}
+function renderBilling(cost, billed) {
+  // Say, in plain words, which wallet paid — so there's never any doubt whether
+  // a meeting used API credits.
+  const el = $("costRow");
+  if (cost && cost.cost_usd != null) {
+    el.className = "cost-row api";
+    el.innerHTML = `💵 This meeting cost about <strong>$${cost.cost_usd.toFixed(2)}</strong> in Claude usage `
+      + `(${(cost.input_tokens||0).toLocaleString()} in / ${(cost.output_tokens||0).toLocaleString()} out tokens) — `
+      + `charged to your API credits.`;
+  } else if (billed === "subscription") {
+    el.className = "cost-row sub";
+    el.innerHTML = `✓ Made with your <strong>Claude subscription</strong> — no API credits used.`;
+  } else { el.className = "cost-row hidden"; el.innerHTML = ""; }
+}
+function renderCoverage(cov) {
+  // Tell the user if any part of the audio couldn't be understood, so a transcript is
+  // never quietly missing a section.
+  const el = $("coverageRow");
+  const suspect = (cov && cov.suspect) || [], recovered = (cov && cov.recovered) || [];
+  if (suspect.length) {
+    el.className = "cover-row warn";
+    el.innerHTML = `⚠️ <strong>No words were picked up</strong> between `
+      + `${suspect.slice(0, 6).map(esc).join(", ")}${suspect.length > 6 ? ", …" : ""}, `
+      + `even though there's sound there. If that part is music, applause or background `
+      + `noise, you can ignore this. Otherwise the audio may be damaged and words could be `
+      + `missing — if it came from a YouTube link, download the audio yourself and use `
+      + `<strong>Upload</strong>, which always gives the cleanest file.`;
+  } else if (recovered.length) {
+    el.className = "cover-row ok";
+    el.innerHTML = `🩹 Recovered ${recovered.length} section(s) the first pass missed `
+      + `(${recovered.slice(0, 6).map(esc).join(", ")}${recovered.length > 6 ? ", …" : ""}) — `
+      + `they're included in your transcript.`;
+  } else { el.className = "cover-row hidden"; el.innerHTML = ""; }
+}
+async function loadUnfinished() {
+  try {
+    const d = await (await fetch("/api/unfinished")).json();
+    const box = $("resumeBox");
+    const u = (d.unfinished || [])[0];
+    if (!u) { box.classList.add("hidden"); box.innerHTML = ""; return; }
+    const p = prettyName(u.name);
+    box.classList.remove("hidden");
+    box.innerHTML = `⏸️ An unfinished meeting was found (the app closed before its notes were made):
+      <strong>${esc(p.title)}</strong> <span class="when">${p.when}</span>
+      <div class="resume-actions">
+        <button class="action primary" id="resumeBtn">▶ Finish it now</button>
+        <button class="action danger" id="discardUnfinishedBtn">✕ Discard it</button>
+      </div>`;
+    $("resumeBtn").onclick = async () => {
+      $("resumeBtn").disabled = true;
+      await fetch("/api/resume", { method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ name: u.name }) });
+      viewing = null;
+    };
+    $("discardUnfinishedBtn").onclick = async () => {
+      if (!confirm("Discard this unfinished meeting? Its audio will be deleted.")) return;
+      await fetch("/api/discard", { method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ name: u.name }) });
+      loadUnfinished(); loadRecent();
+    };
+  } catch (e) {}
+}
+async function loadSpend() {
+  try {
+    const d = await (await fetch("/api/spend")).json();
+    const n = d.meetings || 0;
+    $("spendLine").innerHTML = `Spent via this app so far: <strong>$${(d.total_usd||0).toFixed(2)}</strong> `
+      + `across ${n} meeting${n===1?"":"s"} · `
+      + `<a href="https://console.anthropic.com/settings/billing" target="_blank">check your balance ↗</a>`;
+  } catch (e) {}
+}
+
+async function loadDevices() {
+  try {
+    const d = await (await fetch("/api/devices")).json();
+    const sel = $("mic"); sel.innerHTML = "";
+    (d.devices||[]).forEach(dev => {
+      const o=document.createElement("option"); o.value=dev.index; o.textContent=dev.name;
+      if (dev.index===d.default) o.selected=true; sel.appendChild(o);
+    });
+    if (!sel.options.length){ const o=document.createElement("option"); o.textContent="Default mic"; o.value=0; sel.appendChild(o); }
+  } catch (e) {}
+}
+async function loadRecent() {
+  try {
+    const d = await (await fetch("/api/meetings")).json();
+    const box = $("recentList");
+    if (!d.meetings || !d.meetings.length){ box.innerHTML='<div class="empty">No meetings yet.</div>'; return; }
+    box.innerHTML="";
+    d.meetings.forEach(mt => {
+      const p=prettyName(mt.name); const el=document.createElement("button"); el.className="item";
+      el.innerHTML=`<span>🗒️</span><span>${esc(mt.title || p.title)}</span><span class="when">${p.when}</span>`;
+      el.onclick=()=>openMeeting(mt.name); box.appendChild(el);
+    });
+  } catch (e) {}
+}
+async function openMeeting(name) {
+  const d = await (await fetch("/api/meeting/"+encodeURIComponent(name))).json();
+  if (!d.ok) return;
+  viewing = name; currentSession = name;
+  $("summaryDoc").innerHTML = renderMarkdown(d.summary_md || "_No summary._");
+  $("folderBtn").dataset.name = name;
+  $("saveAudioBtn").dataset.name = name;
+  $("notionRow").className = "notion-row hidden"; $("notionRow").innerHTML="";
+  renderCoverage(d.coverage);
+  renderBilling(d.cost, d.billed);
+  renderTook(d.took, d.phase_times);
+  setTab("summary"); show("done"); window.scrollTo(0, 0);
+}
+
+document.querySelectorAll(".seg").forEach(btn => {
+  btn.onclick = () => {
+    document.querySelectorAll(".seg").forEach(b=>b.classList.remove("active"));
+    btn.classList.add("active");
+    mode = btn.dataset.mode;
+    $("modeHint").textContent = MODE_HINTS[mode];
+    $("idleHint").textContent = mode==="room"
+      ? "Tip: keep your Mac close to the phone speaker and minimise background noise."
+      : "Tip: wear headphones on calls for the cleanest result.";
+  };
+});
+$("modeHint").textContent = MODE_HINTS[mode];
+
+function applyQualityUI() {
+  document.querySelectorAll("#quality .qual-card").forEach(c =>
+    c.classList.toggle("active", c.dataset.quality === quality));
+}
+document.querySelectorAll("#quality .qual-card").forEach(c => {
+  c.onclick = () => { quality = c.dataset.quality; localStorage.setItem("mn_quality", quality); applyQualityUI(); };
+});
+applyQualityUI();
+// remember the speaker-ID choice between launches
+if (localStorage.getItem("mn_diarize") === "0") $("diarizeChk").checked = false;
+$("diarizeChk").onchange = () => localStorage.setItem("mn_diarize", diarizeOn() ? "1" : "0");
+
+$("startBtn").onclick = async () => {
+  $("startBtn").disabled = true;
+  await fetch("/api/start", { method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({ title:$("title").value, context:$("context").value,
+                           mic:parseInt($("mic").value||"0",10), mode, quality,
+                           diarize: diarizeOn() }) });
+  $("startBtn").disabled = false; viewing = null;
+};
+$("stopBtn").onclick = async () => {
+  $("stopBtn").disabled = true; await fetch("/api/stop", { method:"POST" }); $("stopBtn").disabled = false;
+};
+
+async function cancelRun(msg) {
+  if (!confirm(msg)) return;
+  try { await fetch("/api/cancel", { method: "POST" }); } catch (e) {}
+  viewing = null; currentSession = null;
+}
+$("cancelBtn").onclick = () => cancelRun(
+  "Discard this recording? The audio will be deleted and NO notes will be made.");
+$("cancelProcBtn").onclick = () => cancelRun(
+  "Cancel and discard this meeting? Processing stops and NO notes will be made.");
+
+function importMsg(t, warn){ const m=$("importMsg"); m.textContent=t||""; m.classList.toggle("hidden", !t); m.classList.toggle("warn", !!warn); }
+$("ytBtn").onclick = async () => {
+  const url = $("ytUrl").value.trim();
+  if (!url) { importMsg("Paste a YouTube link first.", true); return; }
+  $("ytBtn").disabled = true; importMsg("Starting…");
+  try {
+    const r = await (await fetch("/api/youtube", { method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ url, title:$("importTitle").value, context:$("importContext").value, quality, diarize: diarizeOn() }) })).json();
+    if (!r.ok) importMsg(r.error || "Couldn't start.", true);
+    else { viewing = null; $("ytUrl").value = ""; importMsg(""); }
+  } catch (e) { importMsg("Couldn't reach the app.", true); }
+  $("ytBtn").disabled = false;
+};
+$("fileInput").onchange = async () => {
+  const f = $("fileInput").files[0]; if (!f) return;
+  const fd = new FormData();
+  fd.append("file", f); fd.append("title", $("importTitle").value); fd.append("context", $("importContext").value);
+  fd.append("quality", quality); fd.append("diarize", diarizeOn() ? "true" : "false");
+  importMsg("Uploading “" + f.name + "”… this can take a moment for a big file.");
+  try {
+    const r = await (await fetch("/api/upload", { method:"POST", body: fd })).json();
+    if (!r.ok) importMsg(r.error || "Upload failed.", true);
+    else { viewing = null; importMsg(""); }
+  } catch (e) { importMsg("Upload failed — the file may be too large.", true); }
+  $("fileInput").value = "";
+};
+async function reset() {
+  await fetch("/api/new", { method:"POST" });
+  viewing=null; currentSession=null; $("title").value=""; $("context").value="";
+  $("ytUrl").value=""; $("importTitle").value=""; $("importContext").value="";
+  importMsg(""); loadRecent();
+}
+$("newBtn").onclick = reset; $("errNewBtn").onclick = reset; $("homeBtn").onclick = reset;
+$("folderBtn").onclick = async () => {
+  const name = $("folderBtn").dataset.name;
+  if (name) await fetch("/api/reveal", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ name }) });
+};
+$("wordBtn").onclick = () => {
+  if (currentSession)
+    window.location = "/api/transcript_docx/" + encodeURIComponent(currentSession);
+};
+$("saveAudioBtn").onclick = async () => {
+  const btn = $("saveAudioBtn"), name = btn.dataset.name;
+  if (!name || btn.disabled) return;
+  const orig = "💾 Save audio to Desktop";
+  btn.disabled = true; btn.textContent = "Saving…";
+  try {
+    const r = await (await fetch("/api/save_audio", { method:"POST",
+      headers:{"Content-Type":"application/json"}, body: JSON.stringify({ name }) })).json();
+    btn.textContent = r.ok ? "Saved to Desktop ✓" : "Couldn't save";
+    if (!r.ok && r.error) alert(r.error);
+  } catch (e) { btn.textContent = "Couldn't save"; }
+  setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 3000);
+};
+$("quitBtn").onclick = async () => {
+  if (last==="recording" || last==="processing") { alert("Please stop the current recording first."); return; }
+  if (!confirm("Quit the Meeting Notes app? You can reopen it any time from the icon.")) return;
+  try { await fetch("/api/quit", { method:"POST" }); } catch (e) {}
+  document.body.innerHTML = '<div style="text-align:center;margin-top:140px;font-family:-apple-system,BlinkMacSystemFont,sans-serif;color:#64748b;font-size:16px;">Meeting Notes has stopped.<br>You can close this tab.</div>';
+};
+
+// ----- version & updates -----------------------------------------------------
+let pendingUpdate = null;   // the newer version we found, if any
+
+function renderVersion(current, latest) {
+  const el = $("versionLine");
+  if (!current) { el.innerHTML = ""; return; }
+  el.innerHTML = `Version ${esc(current)}`
+    + (latest ? ` · <span class="new">version ${esc(latest)} is available</span>` : "");
+}
+
+function showUpdateReady(d) {
+  pendingUpdate = d;
+  $("updateBtn").textContent = `⟳ Update to ${d.latest}`;
+  $("updateBtn").classList.add("ready");
+  renderVersion(d.current, d.latest);
+}
+
+function resetUpdateBtn() {
+  // A check that failed (e.g. you're offline) must never throw away an update we
+  // already know about — otherwise the button would look idle but still install.
+  const btn = $("updateBtn");
+  if (pendingUpdate) { showUpdateReady(pendingUpdate); return; }
+  btn.textContent = "⟳ Update";
+  btn.classList.remove("ready");
+}
+
+async function checkForUpdate(quiet) {
+  const btn = $("updateBtn");
+  if (!quiet) { btn.disabled = true; btn.textContent = "Checking…"; }
+  try {
+    const d = await (await fetch("/api/update_check")).json();
+    btn.disabled = false;
+    if (d.ok && d.update_available) { showUpdateReady(d); return; }
+    if (d.ok) {                       // confirmed up to date — forget any earlier finding
+      pendingUpdate = null;
+      renderVersion(d.current, null);
+    }
+    if (quiet) { resetUpdateBtn(); return; }
+    // An explicit click deserves an explicit answer.
+    btn.textContent = d.ok ? "Up to date ✓" : "Couldn't check";
+    if (!d.ok && d.not_published) alert("Automatic updates aren't switched on yet.\n\n"
+      + "The app works exactly as normal — this only means there's nowhere for it to "
+      + "download updates from yet.");
+    else if (!d.ok && d.error) alert("Couldn't check for updates: " + d.error
+      + "\n\nThis usually just means you're offline. The app works as normal.");
+    setTimeout(resetUpdateBtn, 3000);
+  } catch (e) {
+    btn.disabled = false;
+    resetUpdateBtn();
+    if (!quiet) alert("Couldn't check for updates — the app works as normal.");
+  }
+}
+
+async function installUpdate() {
+  const d = pendingUpdate;
+  const notes = (d.notes || []).map(n => "  • " + n).join("\n");
+  if (!confirm(`Update Meeting Notes to version ${d.latest}?\n\n`
+      + (notes ? `What's new:\n${notes}\n\n` : "")
+      + "The app will restart itself. Your recordings, notes and settings are kept.")) return;
+  const btn = $("updateBtn");
+  btn.disabled = true; btn.textContent = "Updating…"; btn.classList.remove("ready");
+  let r;
+  try {
+    const resp = await fetch("/api/update", {
+      method: "POST", headers: { "X-Meeting-Notes": "1" } });
+    r = await resp.json();
+  } catch (e) {
+    // Don't claim success just because the connection dropped — we can't tell from
+    // here whether it worked, so say what we actually know.
+    btn.disabled = false; resetUpdateBtn();
+    alert("The update couldn't be completed — the app stopped responding.\n\n"
+      + "Quit Meeting Notes and start it again from your Desktop icon. If anything "
+      + "looks wrong, double-click “Restore Previous Version” on your Desktop.");
+    return;
+  }
+  if (!r.ok) {
+    btn.disabled = false; resetUpdateBtn();
+    alert("The update didn't go ahead.\n\n" + (r.error || "Unknown problem.")
+      + (r.swapped ? "" : "\n\nYour app is unchanged and still works."));
+    return;
+  }
+  showRestarting(r.version);
+}
+
+function showRestarting(version) {
+  document.body.innerHTML = '<div id="restartBox" style="text-align:center;margin-top:140px;'
+    + 'font-family:-apple-system,BlinkMacSystemFont,sans-serif;color:#64748b;font-size:16px;'
+    + 'line-height:1.7;">'
+    + `Updated to version ${esc(version || "")} 🎉<br>`
+    + '<span id="restartMsg">Meeting Notes is restarting — this page will refresh itself.</span>'
+    + '<br><br><span style="font-size:13px;color:#9ca3af;">If anything looks wrong afterwards, '
+    + 'double-click “Restore Previous Version” on your Desktop.</span></div>';
+  // Wait for the new version to come up, then reload onto it — so the user doesn't
+  // have to do anything at all.
+  let tries = 0;
+  const timer = setInterval(async () => {
+    tries++;
+    try {
+      const s = await (await fetch("/api/status", { cache: "no-store" })).json();
+      if (s && s.status !== undefined) { clearInterval(timer); location.reload(); return; }
+    } catch (e) { /* still down — keep waiting */ }
+    if (tries > 40) {
+      clearInterval(timer);
+      const m = $("restartMsg");
+      if (m) m.textContent = "Start Meeting Notes again from your Desktop icon.";
+    }
+  }, 1500);
+}
+
+$("updateBtn").onclick = () => {
+  if (last==="recording" || last==="processing") {
+    alert("Please wait until the current meeting has finished before updating."); return;
+  }
+  if (pendingUpdate) installUpdate(); else checkForUpdate(false);
+};
+
+let last = null;
+async function poll() {
+  try {
+    const s = await (await fetch("/api/status")).json();
+    $("notionBadge").textContent = s.notion_configured ? "connected ✓" : "not connected";
+    $("notionBadge").className = "pill" + (s.notion_configured ? "" : " off");
+    if (s.version && !pendingUpdate) renderVersion(s.version, null);
+    if (viewing && s.status!=="recording" && s.status!=="processing") return;
+
+    if (s.status==="recording") {
+      show("recording"); $("timer").textContent = fmtTime(s.elapsed);
+      $("recLabel").textContent = s.title ? `Recording “${s.title}”…` : "Recording…";
+      $("recWarn").classList.toggle("hidden", !s.rec_warning);
+      $("recWarn").textContent = s.rec_warning ? "⚠️ " + s.rec_warning : "";
+    } else if (s.status==="processing") {
+      show("processing"); $("procStep").textContent = s.step || "Working…";
+      const pct = Math.max(0, Math.min(100, s.progress || 0));
+      $("procFill").style.width = pct + "%";
+      $("procPct").textContent = pct + "%";
+      $("procEta").textContent = fmtEta(s.eta);
+    } else if (s.status==="done") {
+      if (last!=="done") {
+        currentSession = s.session_name || null;
+        if (currentSession) delete transcriptCache[currentSession];  // fresh transcript
+        $("summaryDoc").innerHTML = renderMarkdown(s.summary_md || "_No summary._");
+        $("folderBtn").dataset.name = s.session_name || "";
+        $("saveAudioBtn").dataset.name = s.session_name || "";
+        renderNotion(s); renderCoverage(s.coverage); renderBilling(s.cost, s.billed);
+        renderTook(s.took, s.phase_times);
+        setTab("summary"); show("done");
+        window.scrollTo(0, 0); loadRecent(); loadSpend();
+      }
+    } else if (s.status==="error") {
+      show("error"); $("errorText").textContent = "Something went wrong: " + (s.error || "unknown error");
+    } else { show("idle"); if (last !== "idle") loadUnfinished(); }
+    last = s.status;
+  } catch (e) {}
+}
+
+loadDevices(); loadRecent(); loadSpend(); loadUnfinished(); poll(); setInterval(poll, 1000);
+// Look for a new version quietly in the background — never delays the page.
+setTimeout(() => checkForUpdate(true), 1500);
+</script>
+</body>
+</html>

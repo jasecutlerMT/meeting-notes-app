@@ -1,0 +1,24 @@
+# Built / downloaded tools
+vendor/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Never commit recordings, transcripts, or notes (they live in ~/MeetingNotes by default)
+MeetingNotes/
+*.wav
+*.m4a
+*.mp3
+
+# Local secrets (e.g. Claude API key) — added in a later piece
+.env
+
+# runtime log from the app icon
+app.log
+*.app/
+
+# self-update working files (staging, backups, restore markers)
+.update/
+.backup/

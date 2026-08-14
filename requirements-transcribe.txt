@@ -1,0 +1,4 @@
+# Python dependency for the transcription step (Piece 2).
+# Installed automatically into .venv by transcribe.sh on first run.
+# mlx-whisper = Apple MLX engine, GPU-accelerated on Apple Silicon (M-series).
+mlx-whisper
